@@ -58,7 +58,8 @@ const len=(a,b)=>{let s=0;for(let i=a;i<b&&i<rutt.length-1;i++)s+=m(rutt[i],rutt
 const dist=x=>x>=1000?(x/1000).toFixed(1)+' km':Math.max(10,Math.round(x/10)*10)+' m';
 const tid=x=>{x=Math.max(1,Math.round(x));return x<60?x+' min':Math.floor(x/60)+' h'+(x%60?' '+x%60+' min':'')};
 const say=t=>$('#txt').textContent=t;
-function key(){let k='';try{k=localStorage.getItem('k')||''}catch(e){}if(!k){k=(prompt('Klistra in din nyckel från account.heigit.org')||'').trim();try{if(k)localStorage.setItem('k',k)}catch(e){}}return k}
+const ren=k=>(k||'').replace(/[^A-Za-z0-9=_.+\/-]/g,'');
+function key(){let k='';try{k=ren(localStorage.getItem('k'))}catch(e){}if(!k){k=ren(prompt('Klistra in din nyckel från account.heigit.org'));try{if(k)localStorage.setItem('k',k)}catch(e){}}return k}
 function speak(t){if(mute||!window.speechSynthesis)return;const u=new SpeechSynthesisUtterance(t);u.lang='sv-SE';speechSynthesis.cancel();speechSynthesis.speak(u)}
 async function wake(){try{wl=await navigator.wakeLock.request('screen')}catch(e){}}
 function etikett(p){let r=p.name||'';if(p.street){const g=p.street+(p.housenumber?' '+p.housenumber:'');r=p.name&&p.name!==p.street?p.name+', '+g:g}const o=p.city||p.locality||p.district||p.county||'';return [r,o&&o!==r?o:''].filter(Boolean).join(', ')}
@@ -73,7 +74,7 @@ async function sok(t){try{let u='https://photon.komoot.io/api/?q='+encodeURIComp
 (d.features||[]).forEach(f=>{const p=f.properties;if(p.countrycode&&p.countrycode!=='SE')return;const n=etikett(p);if(!n||seen[n])return;seen[n]=1;l.push({n,lat:f.geometry.coordinates[1],lng:f.geometry.coordinates[0]})});
 const r=$('#res');r.innerHTML='';l.slice(0,6).forEach(x=>{const b=document.createElement('div');b.textContent=x.n;b.onclick=()=>{$('#q').value=x.n;r.style.display='none';$('#q').blur();rutten({lat:x.lat,lng:x.lng})};r.appendChild(b)});r.style.display=l.length?'block':'none'}catch(e){}}
 $('#x').onclick=()=>{$('#q').value='';$('#res').style.display='none';mal=null;rutt=[];steg=[];[line,gap,mk].forEach(x=>x&&x.remove());stop();$('#go').style.display='none';say('Sök en adress, eller håll fingret nere på kartan')};
-$('#cfg').onclick=()=>{const k=prompt('Klistra in din nyckel från account.heigit.org');if(k!==null){try{localStorage.setItem('k',k.trim())}catch(e){}}};
+$('#cfg').onclick=()=>{const k=prompt('Klistra in din nyckel från account.heigit.org');if(k!==null){try{localStorage.setItem('k',ren(k))}catch(e){}}};
 $('#vol').onclick=()=>{mute=!mute;$('#vol').textContent=mute?'🔇':'🔊';if(mute&&window.speechSynthesis)speechSynthesis.cancel()};
 map.on('contextmenu',e=>{if(!navig){$('#q').value='';rutten({lat:e.latlng.lat,lng:e.latlng.lng})}});
 map.on('dragstart',()=>{if(navig)folj=false});
@@ -82,12 +83,12 @@ async function rutten(s,omr){if(!pos){say('Väntar på GPS-position...');return}
 mal=s;if(mk)mk.remove();mk=L.marker([s.lat,s.lng],{draggable:true,icon:L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[22,22],iconAnchor:[11,22]})}).addTo(map).on('dragend',()=>{const p=mk.getLatLng();rutten({lat:p.lat,lng:p.lng})});
 if(!omr){rutt=[];steg=[];stop();say('Räknar ut rutt...')}
 try{const r=await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson',{method:'POST',headers:{Authorization:k,'Content-Type':'application/json'},body:JSON.stringify({coordinates:[[pos.lng,pos.lat],[s.lng,s.lat]],radiuses:[500,1500],options:{avoid_features:['highways','tollways']}})});
-const d=await r.json(),f=d.features&&d.features[0];if(!f){say(r.status==401||r.status==403?'Nyckeln godkändes inte. Byt den med ⚙.':'Ingen rutt hittades.');return}
+const d=await r.json(),f=d.features&&d.features[0];if(!f){const em=d.error&&(d.error.message||d.error);say(r.status==401||r.status==403?'Nyckeln godkändes inte. Byt den med ⚙.':'Ingen rutt ('+r.status+(em?': '+em:'')+')');return}
 rutt=f.geometry.coordinates.map(c=>[c[1],c[0]]);steg=[];(f.properties.segments||[]).forEach(g=>steg=steg.concat(g.steps||[]));idx=0;
 [line,gap].forEach(x=>x&&x.remove());line=L.polyline(rutt,{color:'#1e6bff',weight:6}).addTo(map);
 const e=rutt[rutt.length-1],kvar=Math.round(m(e,[s.lat,s.lng]));if(kvar>30)gap=L.polyline([e,[s.lat,s.lng]],{color:'#888',weight:3,dashArray:'6 8'}).addTo(map);
 const km=f.properties.summary.distance/1000;$('#go').style.display='block';
-if(omr){say('Ny rutt beräknad.')}else{say(km.toFixed(1)+' km, ca '+tid(km/MAX*60)+(kvar>30?'. Vägen slutar ca '+kvar+' m från målet.':''));map.fitBounds(L.latLngBounds(rutt.concat([[s.lat,s.lng]])),{paddingTopLeft:[30,110],paddingBottomRight:[30,210]})}}catch(e){say('Kunde inte hämta rutt.')}}
+if(omr){say('Ny rutt beräknad.')}else{say(km.toFixed(1)+' km, ca '+tid(km/MAX*60)+(kvar>30?'. Vägen slutar ca '+kvar+' m från målet.':''));map.fitBounds(L.latLngBounds(rutt.concat([[s.lat,s.lng]])),{paddingTopLeft:[30,110],paddingBottomRight:[30,210]})}}catch(e){say('Kunde inte hämta rutt: '+(e&&e.message?e.message:e))}}
 function tick(){if(!navig||!rutt.length||!pos)return;const p=[pos.lat,pos.lng];let b=idx,bd=1e9;for(let i=idx;i<Math.min(rutt.length,idx+300);i++){const d=m(rutt[i],p);if(d<bd){bd=d;b=i}}
 if(bd>60){if(Date.now()-lastRe>8000){lastRe=Date.now();rutten(mal,true)}}else idx=b;
 if(m(p,[mal.lat,mal.lng])<40||(idx>=rutt.length-3&&bd<40)){stop();say('Du är framme!');speak('Du är framme');return}
