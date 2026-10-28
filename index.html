@@ -79,21 +79,28 @@ $('#vol').onclick=()=>{mute=!mute;$('#vol').textContent=mute?'🔇':'🔊';if(mu
 map.on('contextmenu',e=>{if(!navig){$('#q').value='';rutten({lat:e.latlng.lat,lng:e.latlng.lng})}});
 map.on('dragstart',()=>{if(navig)folj=false});
 $('#ctr').onclick=()=>{if(!pos)return;if(navig){folj=true;map.setView([pos.lat,pos.lng],17)}else map.setView([pos.lat,pos.lng],17)};
-async function rutten(s,omr){if(!pos){say('Väntar på GPS-position...');return}const k=key();if(!k){say('Nyckel saknas. Tryck på ⚙.');return}
+function dec(s){let i=0,la=0,lo=0,o=[];while(i<s.length){let b,sh=0,r=0;do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5}while(b>=32);la+=r&1?~(r>>1):r>>1;sh=0;r=0;do{b=s.charCodeAt(i++)-63;r|=(b&31)<<sh;sh+=5}while(b>=32);lo+=r&1?~(r>>1):r>>1;o.push([la/1e6,lo/1e6])}return o}
+async function valh(s){const q={locations:[{lat:pos.lat,lon:pos.lng},{lat:s.lat,lon:s.lng}],costing:'auto',costing_options:{auto:{use_highways:0,use_tolls:0,top_speed:MAX}},directions_options:{language:'sv-SE',units:'kilometers'}};
+const r=await fetch('https://valhalla1.openstreetmap.de/route?json='+encodeURIComponent(JSON.stringify(q))),d=await r.json();if(!d.trip)throw new Error('Valhalla '+r.status+(d.error?': '+d.error:''));
+const l=d.trip.legs[0];return{pts:dec(l.shape),st:l.maneuvers.map(x=>({i:x.begin_shape_index,t:(x.instruction||'').replace(/\.$/,'')})),km:d.trip.summary.length}}
+async function ors(s){const k=key();if(!k)throw new Error('ORS-nyckel saknas');
+const r=await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson',{method:'POST',headers:{Authorization:k,'Content-Type':'application/json'},body:JSON.stringify({coordinates:[[pos.lng,pos.lat],[s.lng,s.lat]],radiuses:[500,1500],options:{avoid_features:['highways','tollways']}})});
+const d=await r.json(),f=d.features&&d.features[0];if(!f){const em=d.error&&(d.error.message||d.error);throw new Error('ORS '+r.status+(em?': '+em:''))}
+const st=[];(f.properties.segments||[]).forEach(g=>(g.steps||[]).forEach(x=>st.push({i:x.way_points[0],t:(SV[x.type]||'Fortsätt')+(x.name&&x.name!=='-'?' på '+x.name:'')})));
+return{pts:f.geometry.coordinates.map(c=>[c[1],c[0]]),st,km:f.properties.summary.distance/1000}}
+async function rutten(s,omr){if(!pos){say('Väntar på GPS-position...');return}
 mal=s;if(mk)mk.remove();mk=L.marker([s.lat,s.lng],{draggable:true,icon:L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[22,22],iconAnchor:[11,22]})}).addTo(map).on('dragend',()=>{const p=mk.getLatLng();rutten({lat:p.lat,lng:p.lng})});
 if(!omr){rutt=[];steg=[];stop();say('Räknar ut rutt...')}
-try{const r=await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson',{method:'POST',headers:{Authorization:k,'Content-Type':'application/json'},body:JSON.stringify({coordinates:[[pos.lng,pos.lat],[s.lng,s.lat]],radiuses:[500,1500],options:{avoid_features:['highways','tollways']}})});
-const d=await r.json(),f=d.features&&d.features[0];if(!f){const em=d.error&&(d.error.message||d.error);say(r.status==401||r.status==403?'Nyckeln godkändes inte. Byt den med ⚙.':'Ingen rutt ('+r.status+(em?': '+em:'')+')');return}
-rutt=f.geometry.coordinates.map(c=>[c[1],c[0]]);steg=[];(f.properties.segments||[]).forEach(g=>steg=steg.concat(g.steps||[]));idx=0;
-[line,gap].forEach(x=>x&&x.remove());line=L.polyline(rutt,{color:'#1e6bff',weight:6}).addTo(map);
+try{let R;try{R=await valh(s)}catch(e1){try{R=await ors(s)}catch(e2){throw new Error(e1.message+' / '+e2.message)}}
+rutt=R.pts;steg=R.st;idx=0;[line,gap].forEach(x=>x&&x.remove());line=L.polyline(rutt,{color:'#1e6bff',weight:6}).addTo(map);
 const e=rutt[rutt.length-1],kvar=Math.round(m(e,[s.lat,s.lng]));if(kvar>30)gap=L.polyline([e,[s.lat,s.lng]],{color:'#888',weight:3,dashArray:'6 8'}).addTo(map);
-const km=f.properties.summary.distance/1000;$('#go').style.display='block';
-if(omr){say('Ny rutt beräknad.')}else{say(km.toFixed(1)+' km, ca '+tid(km/MAX*60)+(kvar>30?'. Vägen slutar ca '+kvar+' m från målet.':''));map.fitBounds(L.latLngBounds(rutt.concat([[s.lat,s.lng]])),{paddingTopLeft:[30,110],paddingBottomRight:[30,210]})}}catch(e){say('Kunde inte hämta rutt: '+(e&&e.message?e.message:e))}}
+$('#go').style.display='block';
+if(omr){say('Ny rutt beräknad.')}else{say(R.km.toFixed(1)+' km, ca '+tid(R.km/MAX*60)+(kvar>30?'. Vägen slutar ca '+kvar+' m från målet.':''));map.fitBounds(L.latLngBounds(rutt.concat([[s.lat,s.lng]])),{paddingTopLeft:[30,110],paddingBottomRight:[30,210]})}}catch(e){say('Kunde inte hämta rutt: '+(e&&e.message?e.message:e))}}
 function tick(){if(!navig||!rutt.length||!pos)return;const p=[pos.lat,pos.lng];let b=idx,bd=1e9;for(let i=idx;i<Math.min(rutt.length,idx+300);i++){const d=m(rutt[i],p);if(d<bd){bd=d;b=i}}
 if(bd>60){if(Date.now()-lastRe>8000){lastRe=Date.now();rutten(mal,true)}}else idx=b;
 if(m(p,[mal.lat,mal.lng])<40||(idx>=rutt.length-3&&bd<40)){stop();say('Du är framme!');speak('Du är framme');return}
-const n=steg.find(t=>t.way_points[0]>idx),kv=len(idx,rutt.length-1);let tx='Fortsätt till målet';
-if(n){const till=len(idx,n.way_points[0]),ty=SV[n.type]||'Fortsätt';tx='Om '+dist(till)+'<br>'+ty+(n.name&&n.name!=='-'?' på '+n.name:'');if(till<250&&!said[n.way_points[0]]){said[n.way_points[0]]=1;speak('Om '+Math.round(till/10)*10+' meter, '+ty)}}
+const n=steg.find(t=>t.i>idx),kv=len(idx,rutt.length-1);let tx='Fortsätt till målet';
+if(n){const till=len(idx,n.i);tx='Om '+dist(till)+'<br>'+n.t;if(till<250&&!said[n.i]){said[n.i]=1;speak('Om '+Math.round(till/10)*10+' meter, '+n.t)}}
 $('#ban').innerHTML=tx;say(dist(kv)+' kvar, ca '+tid(kv/1000/MAX*60));line.setLatLngs([p].concat(rutt.slice(idx+1)));if(folj)map.panTo(p)}
 $('#go').onclick=()=>{if(navig){stop();if(rutt.length)map.fitBounds(L.latLngBounds(rutt),{paddingTopLeft:[30,110],paddingBottomRight:[30,210]});return}
 navig=true;folj=true;idx=0;said={};document.body.classList.add('nav');$('#go').textContent='Avsluta';$('#go').className='s';wake();speak('Rutten startar');map.setView([pos.lat,pos.lng],17);tick()};
